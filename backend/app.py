@@ -4,17 +4,21 @@ from elasticsearch import Elasticsearch, helpers
 import pandas as pd
 import os
 
+# Configuration
 INDEX_NAME = "news_articles"
 CSV_FILE = "news-article-categories.csv"
 ELASTICSEARCH_URL = "http://localhost:9200"
+PAGE_SIZE = 10  # Number of items per page
 
+# Initialize Flask app and enable CORS
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
 
+# Connect to Elasticsearch
 es = Elasticsearch(ELASTICSEARCH_URL)
 
-def create_index_if_not_exists():
-    """检查并创建ES索引"""
+def create_index():
+    """Create the index if it does not exist."""
     if es.indices.exists(index=INDEX_NAME):
         print(f"Index '{INDEX_NAME}' already exists.")
         return
@@ -32,8 +36,8 @@ def create_index_if_not_exists():
     es.indices.create(index=INDEX_NAME, body=mapping)
     print(f"Created index '{INDEX_NAME}'.")
 
-def import_data_from_csv():
-    """从CSV文件读取数据并导入ES"""
+def import_csv_data():
+    """Import data from CSV into the index."""
     if not os.path.exists(CSV_FILE):
         print(f"CSV file '{CSV_FILE}' not found. Skipping import.")
         return
@@ -48,7 +52,7 @@ def import_data_from_csv():
                 "category": row["category"],
                 "title": row["title"],
                 "body": row["body"],
-            },
+            }
         }
         for _, row in df.iterrows()
     ]
@@ -57,26 +61,32 @@ def import_data_from_csv():
     print(f"Inserted {len(actions)} documents into '{INDEX_NAME}'.")
 
 def ensure_data_ready():
-    create_index_if_not_exists()
+    """Ensure the index exists and has data."""
+    create_index()
 
     count = es.count(index=INDEX_NAME)["count"]
     if count > 0:
         print(f"Index '{INDEX_NAME}' already has {count} documents. Skipping import.")
     else:
-        import_data_from_csv()
+        import_csv_data()
 
 @app.route('/search', methods=['GET'])
 def search():
+    """Search endpoint with pagination support."""
     query = request.args.get('q', '').strip()
+    page = int(request.args.get('page', 1))
+
     if not query:
-        return jsonify({"error": "Missing query parameter."}), 400
+        return jsonify({"error": "Missing query parameter 'q'."}), 400
 
     search_body = {
+        "from": (page - 1) * PAGE_SIZE,
+        "size": PAGE_SIZE,
         "query": {
             "multi_match": {
                 "query": query,
                 "fields": ["title", "body", "category"],
-                "fuzziness": "AUTO" 
+                "fuzziness": "AUTO"
             }
         }
     }
@@ -88,6 +98,8 @@ def search():
         return jsonify({"error": "Internal server error."}), 500
 
     hits = response.get('hits', {}).get('hits', [])
+    total = response.get('hits', {}).get('total', {}).get('value', 0)
+
     results = [
         {
             "id": hit["_id"],
@@ -98,7 +110,13 @@ def search():
         for hit in hits
     ]
 
-    return jsonify(results)
+    return jsonify({
+        "results": results,
+        "total": total,
+        "page": page,
+        "page_size": PAGE_SIZE,
+        "total_pages": (total + PAGE_SIZE - 1) // PAGE_SIZE
+    })
 
 if __name__ == "__main__":
     ensure_data_ready()
