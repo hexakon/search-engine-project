@@ -1,27 +1,31 @@
-import React, { useState } from "react";
-import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import React, { useState, useEffect } from "react";
+import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from "react-router-dom";
 import SearchBar from "./components/SearchBar";
 import ResultsList from "./components/ResultsList";
 import DetailPage from "./components/DetailPage";
 import LoadingDots from "./components/LoadingDots";
+import LoginPage from "./components/LoginPage";
+import RegisterPage from "./components/RegisterPage";
+import ClickHistoryPage from "./components/ClickHistoryPage";
 import "./App.css";
 
-function HomePage({ savedQuery, savedResults, savedPage, savedTotalPages, onSearch }) {
+function HomePage({ username, onLogout, savedQuery, savedResults, savedPage, savedTotalPages, onSearch }) {
   const [query, setQuery] = useState(savedQuery || "");
   const [results, setResults] = useState(savedResults || []);
   const [currentPage, setCurrentPage] = useState(savedPage || 1);
   const [totalPages, setTotalPages] = useState(savedTotalPages || 0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [hasSearched, setHasSearched] = useState(false);
+  const [hasSearched, setHasSearched] = useState(!!savedQuery);
+  const token = localStorage.getItem("token");
+  const navigate = useNavigate();
 
-  // Fetch search results from backend
   const fetchResults = async (searchQuery, page = 1) => {
     if (!searchQuery.trim()) {
       setError("Please enter a search term.");
       setResults([]);
       setTotalPages(0);
-      onSearch("", [], 1, 0); // reset in parent too
+      onSearch("", [], 1, 0);
       return;
     }
 
@@ -30,22 +34,21 @@ function HomePage({ savedQuery, savedResults, savedPage, savedTotalPages, onSear
 
     try {
       const response = await fetch(`/search?q=${encodeURIComponent(searchQuery)}&page=${page}`, {
-        method: "GET",
-        mode: "cors",
+        headers: { Authorization: `Bearer ${token}` },
       });
 
       if (!response.ok) {
-        throw new Error(`Server error: ${response.status}`);
+        throw new Error("Failed to fetch results");
       }
 
       const data = await response.json();
       setResults(data.results);
       setTotalPages(data.total_pages);
       setCurrentPage(data.page);
-      onSearch(searchQuery, data.results, data.page, data.total_pages); // save all
+      onSearch(searchQuery, data.results, data.page, data.total_pages);
     } catch (err) {
-      console.error("Fetch error:", err);
-      setError("Failed to fetch results. Please try again later.");
+      console.error("Error:", err);
+      setError("Failed to fetch results. Try again.");
       setResults([]);
       setTotalPages(0);
       onSearch("", [], 1, 0);
@@ -54,42 +57,29 @@ function HomePage({ savedQuery, savedResults, savedPage, savedTotalPages, onSear
     }
   };
 
-  // Handle a new search
   const handleSearch = (newQuery) => {
     setQuery(newQuery);
-    setHasSearched(true);  // mark as searched
+    setHasSearched(true);
     fetchResults(newQuery, 1);
   };
 
-  // Handle page change
   const handlePageChange = (page) => {
     fetchResults(query, page);
   };
 
-  // Render pagination controls
   const renderPagination = () => {
     if (totalPages <= 1) return null;
-
     const maxPagesToShow = 9;
     const half = Math.floor(maxPagesToShow / 2);
-
     let startPage = Math.max(1, currentPage - half);
     let endPage = Math.min(totalPages, currentPage + half);
+    if (currentPage <= half) endPage = Math.min(totalPages, maxPagesToShow);
+    else if (currentPage + half >= totalPages) startPage = Math.max(1, totalPages - maxPagesToShow + 1);
 
-    if (currentPage <= half) {
-      endPage = Math.min(totalPages, maxPagesToShow);
-    } else if (currentPage + half >= totalPages) {
-      startPage = Math.max(1, totalPages - maxPagesToShow + 1);
-    }
-
-    const pageButtons = [];
+    const buttons = [];
     for (let i = startPage; i <= endPage; i++) {
-      pageButtons.push(
-        <button
-          key={i}
-          className={i === currentPage ? "active" : ""}
-          onClick={() => handlePageChange(i)}
-        >
+      buttons.push(
+        <button key={i} className={i === currentPage ? "active" : ""} onClick={() => handlePageChange(i)}>
           {i}
         </button>
       );
@@ -97,63 +87,64 @@ function HomePage({ savedQuery, savedResults, savedPage, savedTotalPages, onSear
 
     return (
       <div className="pagination">
-        {currentPage > 1 && (
-          <button onClick={() => handlePageChange(currentPage - 1)}>Prev</button>
-        )}
-        {pageButtons}
-        {currentPage < totalPages && (
-          <button onClick={() => handlePageChange(currentPage + 1)}>Next</button>
-        )}
+        {currentPage > 1 && <button onClick={() => handlePageChange(currentPage - 1)}>Prev</button>}
+        {buttons}
+        {currentPage < totalPages && <button onClick={() => handlePageChange(currentPage + 1)}>Next</button>}
       </div>
-    );
-  };
-
-  // Render search results or loading/error messages
-  const renderContent = () => {
-    if (loading) {
-      return <LoadingDots />;
-    }
-
-    if (error) {
-      return <p className="message error">{error}</p>;
-    }
-
-    if (results.length === 0) {
-      if (hasSearched) {
-        return <p className="message">No results found. Try another search.</p>;
-      } else {
-        return null;  // No message at all if never searched
-      }
-    }
-
-    return (
-      <>
-        <ResultsList results={results} />
-        {loading && <LoadingDots />}  {/* Only show dots while loading */}
-        {renderPagination()}
-      </>
     );
   };
 
   return (
     <div className="app-container">
       <div className="card">
-        <h1 className="title">News Search Engine</h1>
-        <SearchBar onSearch={handleSearch} />
-        {renderContent()}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <h1 className="title">Welcome, {username}!</h1>
+          <div style={{ display: "flex", gap: "0.5rem" }}>
+            <button className="logout-button" onClick={() => navigate("/click-history")}>View Interests</button>
+            <button className="logout-button" onClick={onLogout}>Logout</button>
+          </div>
+        </div>
+        <SearchBar onSearch={handleSearch} initialValue={query} />
+        {loading && <LoadingDots />}
+        {error && <p className="message error">{error}</p>}
+        {!loading && results.length > 0 && (
+          <>
+            <ResultsList results={results} />
+            {renderPagination()}
+          </>
+        )}
+        {!loading && hasSearched && results.length === 0 && <p className="message">No results found.</p>}
       </div>
     </div>
   );
 }
 
 function App() {
-  // Global saved search states
+  const [token, setToken] = useState(localStorage.getItem("token"));
+  const [username, setUsername] = useState(localStorage.getItem("username"));
   const [savedQuery, setSavedQuery] = useState("");
   const [savedResults, setSavedResults] = useState([]);
   const [savedPage, setSavedPage] = useState(1);
   const [savedTotalPages, setSavedTotalPages] = useState(0);
 
-  // Save search results globally
+  const handleLogin = (token, username) => {
+    localStorage.setItem("token", token);
+    localStorage.setItem("username", username);
+    setToken(token);
+    setUsername(username);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("username");
+    setToken(null);
+    setUsername(null);
+    setSavedQuery("");
+    setSavedResults([]);
+    setSavedPage(1);
+    setSavedTotalPages(0);
+  };
+
   const handleSaveSearch = (query, results, page, totalPages) => {
     setSavedQuery(query);
     setSavedResults(results);
@@ -164,19 +155,28 @@ function App() {
   return (
     <Router>
       <Routes>
+        <Route path="/login" element={<LoginPage onLogin={handleLogin} />} />
+        <Route path="/register" element={<RegisterPage />} />
+        <Route path="/detail/:id" element={<DetailPage />} />
+        <Route path="/click-history" element={<ClickHistoryPage />} />
         <Route
           path="/"
           element={
-            <HomePage
-              savedQuery={savedQuery}
-              savedResults={savedResults}
-              savedPage={savedPage}
-              savedTotalPages={savedTotalPages}
-              onSearch={handleSaveSearch}
-            />
+            token ? (
+              <HomePage
+                username={username}
+                onLogout={handleLogout}
+                savedQuery={savedQuery}
+                savedResults={savedResults}
+                savedPage={savedPage}
+                savedTotalPages={savedTotalPages}
+                onSearch={handleSaveSearch}
+              />
+            ) : (
+              <Navigate to="/login" replace />
+            )
           }
         />
-        <Route path="/detail/:id" element={<DetailPage />} />
       </Routes>
     </Router>
   );

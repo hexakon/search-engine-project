@@ -36,3 +36,15 @@
     line-height: 1.4;
   }
   
+  .result-category {
+    display: inline-block;
+    background-color: #4a90e2;
+    color: white;
+    font-size: 0.8rem;
+    font-weight: 500;
+    padding: 0.25rem 0.6rem;
+    border-radius: 0.5rem;
+    margin-top: 0.3rem;
+    margin-bottom: 0.6rem;
+  }
+  
