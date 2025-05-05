@@ -26,17 +26,15 @@ class SearchHistory(db.Model):
     __tablename__ = "search_history"
 
     id = db.Column(db.Integer, primary_key=True)
-    query = db.Column(db.String(255), nullable=False)
-    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
-
     user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    search_text = db.Column(db.String(255), nullable=False)
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
 
 
 class CategoryClick(db.Model):
     __tablename__ = "category_click"
 
     id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
     category = db.Column(db.String(100), nullable=False)
     click_count = db.Column(db.Integer, default=1)
-
-    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
